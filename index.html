@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ETRI 인공지능 인프라 GPU/NPU 구매이력 통합 관리 시스템</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-slate-50 text-slate-700 antialiased">
+
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
+        <div class="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+            <div class="flex flex-col">
+                <h1 class="text-base font-bold text-slate-900 tracking-tight">ETRI 인공지능 컴퓨팅 자산 현황 분석 시스템</h1>
+                <p class="text-xs text-slate-400 mt-0.5">원내 분산 수집된 GPU 및 NPU 구매이력을 교차 검증하여 결합한 인프라 도입 분석 대시보드입니다.</p>
+            </div>
+            <span class="bg-slate-100 text-slate-600 border border-slate-200 text-xs font-semibold px-3 py-1 rounded-full">통합 자산 관리 모듈</span>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-6 py-8 space-y-8">
+        
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-6 flex flex-col justify-between shadow-sm">
+                <div>
+                    <h2 class="text-sm font-bold text-slate-900 mb-1">구매이력 데이터 원본(RAW) 업로드</h2>
+                    <p class="text-xs text-slate-400 mb-4">엑셀에서 내보낸 CSV 파일을 지정해 주십시오. 한글 깨짐 방지 처리 및 헤더 자동 탐색이 지원됩니다.</p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="border border-dashed border-slate-300 rounded-lg p-5 text-center hover:bg-slate-50 transition cursor-pointer relative bg-slate-50/50">
+                        <input type="file" id="gpuFile" accept=".csv" class="absolute inset-0 opacity-0 cursor-pointer" onchange="handleFileUpload('gpu')">
+                        <p class="text-xs font-bold text-slate-700">GPU 구매이력 파일 선택 (CSV)</p>
+                        <p class="text-[11px] text-blue-500 font-semibold mt-1 truncate" id="gpuFileName">선택된 파일 없음</p>
+                    </div>
+                    <div class="border border-dashed border-slate-300 rounded-lg p-5 text-center hover:bg-slate-50 transition cursor-pointer relative bg-slate-50/50">
+                        <input type="file" id="npuFile" accept=".csv" class="absolute inset-0 opacity-0 cursor-pointer" onchange="handleFileUpload('npu')">
+                        <p class="text-xs font-bold text-slate-700">NPU 구매현황 파일 선택 (CSV)</p>
+                        <p class="text-[11px] text-blue-500 font-semibold mt-1 truncate" id="npuFileName">선택된 파일 없음</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-xl border border-slate-200 p-6 space-y-4 shadow-sm">
+                <h2 class="text-sm font-bold text-slate-900">자산 집계 기준 설정</h2>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">시작 연도</label>
+                        <input type="number" id="startYear" value="2020" class="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-slate-400" onchange="processData()">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">종료 연도</label>
+                        <input type="number" id="endYear" value="2026" class="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-slate-400" onchange="processData()">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">최소 추정금액 한도 (원)</label>
+                    <input type="number" id="minAmount" value="1000000" class="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-slate-400" onchange="processData()">
+                </div>
+                <div class="bg-slate-100 border border-slate-200 rounded-lg p-3 flex items-start space-x-3">
+                    <input type="checkbox" id="completedOnly" checked class="w-4 h-4 mt-0.5 text-slate-600 border-slate-300 rounded focus:ring-slate-400" onchange="processData()">
+                    <div>
+                        <label for="completedOnly" class="text-xs font-bold text-slate-800 block">검수 완료(Y) 내역만 집계 반영</label>
+                        <p class="text-[10px] text-slate-400 mt-0.5">GPU 미검수 건을 차단합니다. (NPU는 파일 구조상 전체 반영)</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">총 투자 금액 누계</p>
+                <p class="text-base font-extrabold text-slate-800 mt-1" id="cardTotalAmount">0 원</p>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">자산 수량 합계 (개)</p>
+                <p class="text-base font-extrabold text-blue-600 mt-1" id="cardTotalQty">0 개</p>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">집계 대상 확정 건수</p>
+                <p class="text-base font-extrabold text-emerald-600 mt-1" id="cardTotalCount">0 건</p>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">자동 제외 및 수동 검토 건수</p>
+                <p class="text-base font-extrabold text-amber-600 mt-1" id="cardReviewExCount">0 / 0 건</p>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="bg-slate-100 border-b border-slate-200 flex overflow-x-auto">
+                <button onclick="switchTab('tab-series')" id="btn-tab-series" class="tab-btn px-5 py-3 text-xs font-bold text-blue-600 border-b-2 border-blue-500 focus:outline-none whitespace-nowrap">시리즈별 요약 및 추이</button>
+                <button onclick="switchTab('tab-gpu-models')" id="btn-tab-gpu-models" class="tab-btn px-5 py-3 text-xs font-bold text-slate-500 hover:text-slate-800 focus:outline-none whitespace-nowrap">GPU 제조사 및 세부 모델별 현황</button>
+                <button onclick="switchTab('tab-npu-firms')" id="btn-tab-npu-firms" class="tab-btn px-5 py-3 text-xs font-bold text-slate-500 hover:text-slate-800 focus:outline-none whitespace-nowrap">NPU 국산/외산 및 제조사별 현황</button>
+                <button onclick="switchTab('tab-emp')" id="btn-tab-emp" class="tab-btn px-5 py-3 text-xs font-bold text-slate-500 hover:text-slate-800 focus:outline-none whitespace-nowrap">연구원 사번별 현황</button>
+                <button onclick="switchTab('tab-raw')" id="btn-tab-raw" class="tab-btn px-5 py-3 text-xs font-bold text-slate-500 hover:text-slate-800 focus:outline-none whitespace-nowrap">집계 대상 원본 내역</button>
+                <button onclick="switchTab('tab-ex')" id="btn-tab-ex" class="tab-btn px-5 py-3 text-xs font-bold text-slate-500 hover:text-slate-800 focus:outline-none whitespace-nowrap">제외 및 검토 로그</button>
+            </div>
+
+            <div class="p-6">
+                <div id="tab-series" class="tab-content space-y-8">
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        <div class="lg:col-span-2 overflow-x-auto">
+                            <h3 class="text-xs font-bold text-slate-800 mb-3">하드웨어 대분류 시리즈별 핵심 지표 요약</h3>
+                            <table class="w-full text-left text-xs border-collapse">
+                                <thead>
+                                    <tr class="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
+                                        <th class="p-2.5">시리즈</th>
+                                        <th class="p-2.5 text-right">집계건수</th>
+                                        <th class="p-2.5 text-right">단품 GPU수</th>
+                                        <th class="p-2.5 text-right">서버 내 GPU수</th>
+                                        <th class="p-2.5 text-right">총GPU수</th>
+                                        <th class="p-2.5 text-right">총추정금액</th>
+                                        <th class="p-2.5 text-right">GPU당 평균금액</th>
+                                        <th class="p-2.5 text-right">금액비중</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="seriesTableBody" class="divide-y divide-slate-100 text-slate-600 font-medium">
+                                    <tr><td colspan="8" class="p-4 text-center text-slate-400">데이터 파일을 업로드해 주십시오.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="bg-slate-50 rounded-xl p-4 flex flex-col justify-center items-center border border-slate-100">
+                            <h4 class="text-[11px] font-bold text-slate-500 mb-2">하드웨어 자산 부문별 예산 비중</h4>
+                            <div class="w-full h-52 relative flex items-center justify-center">
+                                <canvas id="chartPie"></canvas>
+                                <div id="pieFallback" class="hidden text-xs text-slate-400">데이터 로드 대기 중</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div>
+                            <h3 class="text-xs font-bold text-slate-800 mb-3">연도별 시리즈별 GPU 확보 수량 추이</h3>
+                            <div class="overflow-x-auto border border-slate-200 rounded-lg">
+                                <table class="w-full text-left text-xs border-collapse">
+                                    <thead>
+                                        <tr class="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
+                                            <th class="p-2.5">연도</th>
+                                            <th class="p-2.5 text-right">B시리즈</th>
+                                            <th class="p-2.5 text-right">H시리즈</th>
+                                            <th class="p-2.5 text-right">A시리즈</th>
+                                            <th class="p-2.5 text-right">V시리즈</th>
+                                            <th class="p-2.5 text-right">L시리즈</th>
+                                            <th class="p-2.5 text-right">RTX시리즈</th>
+                                            <th class="p-2.5 text-right">기타</th>
+                                            <th class="p-2.5 text-right font-extrabold">합계</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="yearlySeriesTableBody" class="divide-y divide-slate-100 text-slate-600 font-medium">
+                                        <tr><td colspan="9" class="p-4 text-center text-slate-400">데이터가 없습니다.</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div>
+                            <h3 class="text-xs font-bold text-slate-800 mb-3">연도별 도입형태별 요약</h3>
+                            <div class="overflow-x-auto border border-slate-200 rounded-lg">
+                                <table class="w-full text-left text-xs border-collapse">
+                                    <thead>
+                                        <tr class="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
+                                            <th class="p-2.5">연도</th>
+                                            <th class="p-2.5 text-right">GPU단품</th>
+                                            <th class="p-2.5 text-right">서버포함</th>
+                                            <th class="p-2.5 text-right font-extrabold">합계</th>
+                                            <th class="p-2.5 text-right">집계대상 건수</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="yearlyTypeTableBody" class="divide-y divide-slate-100 text-slate-600 font-medium">
+                                        <tr><td colspan="5" class="p-4 text-center text-slate-400">데이터가 없습니다.</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="tab-gpu-models" class="tab-content hidden space-y-6">
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div>
+                            <h3 class="text-xs font-bold text-slate-800 mb-3">GPU 세부 모델별 자산 현황</h3>
+                            <div class="overflow-x-auto border border-slate-200 rounded-lg max-h-[500px] overflow-y-auto">
+                                <table class="w-full text-left text-xs border-collapse sticky-header">
+                                    <thead>
+                                        <tr class="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
+                                            <th class="p-3">시리즈</th>
+                                            <th class="p-3">세부 모델</th>
+                                            <th class="p-3 text-right">건수</th>
+                                            <th class="p-3 text-right">수량 (개)</th>
+                                            <th class="p-3 text-right">금액 (원)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="gpuModelTableBody" class="divide-y divide-slate-100 text-slate-600">
+                                        <tr><td colspan="5" class="p-4 text-center text-slate-400">데이터가 없습니다.</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div>
+                            <h3 class="text-xs font-bold text-slate-800 mb-3">GPU 제조사(벤더)별 자산 현황</h3>
+                            <div class="overflow-x-auto border border-slate-200 rounded-lg max-h-[500px] overflow-y-auto">
+                                <table class="w-full text-left text-xs border-collapse sticky-header">
+                                    <thead>
+                                        <tr class="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
+                                            <th class="p-3">제조사</th>
+                                            <th class="p-3 text-right">건수</th>
+                                            <th class="p-3 text-right">총 수량 (개)</th>
+                                            <th class="p-3 text-right">총 금액 (원)</th>
+                                            <th class="p-3 text-right">비중</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="gpuVendorTableBody" class="divide-y divide-slate-100 text-slate-600">
+                                        <tr><td colspan="5" class="p-4 text-center text-slate-400">데이터가 없습니다.</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="tab-npu-firms" class="tab-content hidden space-y-6 fade-in">
+                    <!-- NPU 요약 카드 -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="npuSummaryCards">
+                        <div class="npu-card bg-gradient-to-br from-blue-50 to-blue-100/50 border border-blue-200 rounded-xl p-5">
+                            <p class="text-[10px] font-bold text-blue-400 uppercase tracking-wider">국산 NPU 합계</p>
+                            <p class="text-lg font-extrabold text-blue-700 mt-1" id="npuDomesticAmt">0 원</p>
+                            <p class="text-[11px] text-blue-500 mt-0.5" id="npuDomesticQty">0개 / 0건</p>
+                        </div>
+                        <div class="npu-card bg-gradient-to-br from-pink-50 to-pink-100/50 border border-pink-200 rounded-xl p-5">
+                            <p class="text-[10px] font-bold text-pink-400 uppercase tracking-wider">외산 NPU 합계</p>
+                            <p class="text-lg font-extrabold text-pink-700 mt-1" id="npuForeignAmt">0 원</p>
+                            <p class="text-[11px] text-pink-500 mt-0.5" id="npuForeignQty">0개 / 0건</p>
+                        </div>
+                        <div class="npu-card bg-gradient-to-br from-violet-50 to-violet-100/50 border border-violet-200 rounded-xl p-5">
+                            <p class="text-[10px] font-bold text-violet-400 uppercase tracking-wider">연구용역 합계</p>
+                            <p class="text-lg font-extrabold text-violet-700 mt-1" id="npuServiceAmt">0 원</p>
+                            <p class="text-[11px] text-violet-500 mt-0.5" id="npuServiceQty">0개 / 0건</p>
+                        </div>
+                    </div>
+
+                    <!-- NPU 차트 영역 -->
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                            <h4 class="text-xs font-bold text-slate-800 mb-3">국산 vs 외산 투자 비율</h4>
+                            <div class="w-full h-48 flex items-center justify-center">
+                                <canvas id="chartNpuOriginPie"></canvas>
+                            </div>
+                        </div>
+                        <div class="lg:col-span-2 bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                            <h4 class="text-xs font-bold text-slate-800 mb-3">NPU 제조사별 투자 금액 비교</h4>
+                            <div class="w-full h-48 flex items-center justify-center">
+                                <canvas id="chartNpuFirmBar"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- NPU 테이블 영역 -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="bg-white border border-slate-200 p-5 rounded-xl space-y-3 shadow-sm">
+                            <h4 class="text-xs font-bold text-slate-800 border-b border-slate-100 pb-2">NPU 국산/외산/용역 구분별 요약</h4>
+                            <table class="w-full text-left text-xs border-collapse">
+                                <thead>
+                                    <tr class="text-slate-500 font-bold border-b border-slate-100 bg-slate-50/50">
+                                        <th class="p-2">구분</th>
+                                        <th class="p-2 text-right">건수</th>
+                                        <th class="p-2 text-right">확보 수량</th>
+                                        <th class="p-2 text-right">총 금액 (원)</th>
+                                        <th class="p-2 text-right">비중</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="npuOriginTableBody" class="divide-y divide-slate-100 text-slate-600 font-medium">
+                                    <tr><td colspan="5" class="p-3 text-center text-slate-400">데이터가 없습니다.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="bg-white border border-slate-200 p-5 rounded-xl space-y-3 shadow-sm">
+                            <h4 class="text-xs font-bold text-slate-800 border-b border-slate-100 pb-2">NPU 제조사별 상세 분류</h4>
+                            <table class="w-full text-left text-xs border-collapse">
+                                <thead>
+                                    <tr class="text-slate-500 font-bold border-b border-slate-100 bg-slate-50/50">
+                                        <th class="p-2">제조사</th>
+                                        <th class="p-2">국산/외산</th>
+                                        <th class="p-2 text-right">건수</th>
+                                        <th class="p-2 text-right">수량</th>
+                                        <th class="p-2 text-right">총 금액 (원)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="npuFirmTableBody" class="divide-y divide-slate-100 text-slate-600 font-medium">
+                                    <tr><td colspan="5" class="p-3 text-center text-slate-400">데이터가 없습니다.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 국산 NPU 기업별 상세 -->
+                    <div class="bg-white border border-slate-200 p-5 rounded-xl shadow-sm space-y-3">
+                        <h4 class="text-xs font-bold text-slate-800 border-b border-slate-100 pb-2">국산 NPU 기업별 도입 상세 내역</h4>
+                        <div class="overflow-x-auto max-h-64 overflow-y-auto border border-slate-100 rounded-lg">
+                            <table class="w-full text-left text-[11px] border-collapse sticky-header">
+                                <thead>
+                                    <tr class="bg-blue-50 text-blue-700 font-bold">
+                                        <th class="p-3">제조사</th>
+                                        <th class="p-3">물품명</th>
+                                        <th class="p-3">모델</th>
+                                        <th class="p-3 text-right">수량</th>
+                                        <th class="p-3 text-right">금액 (원)</th>
+                                        <th class="p-3">연도</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="npuDomesticDetailBody" class="divide-y divide-slate-100 text-slate-600"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 외산 NPU 기업별 상세 -->
+                    <div class="bg-white border border-slate-200 p-5 rounded-xl shadow-sm space-y-3">
+                        <h4 class="text-xs font-bold text-slate-800 border-b border-slate-100 pb-2">외산 NPU 기업별 도입 상세 내역</h4>
+                        <div class="overflow-x-auto max-h-64 overflow-y-auto border border-slate-100 rounded-lg">
+                            <table class="w-full text-left text-[11px] border-collapse sticky-header">
+                                <thead>
+                                    <tr class="bg-pink-50 text-pink-700 font-bold">
+                                        <th class="p-3">제조사</th>
+                                        <th class="p-3">물품명</th>
+                                        <th class="p-3">모델</th>
+                                        <th class="p-3 text-right">수량</th>
+                                        <th class="p-3 text-right">금액 (원)</th>
+                                        <th class="p-3">연도</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="npuForeignDetailBody" class="divide-y divide-slate-100 text-slate-600"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="tab-emp" class="tab-content hidden space-y-4">
+                    <div class="flex justify-between items-center">
+                        <h3 class="text-xs font-bold text-slate-800">신청 연구원 사번 및 부서별 컴퓨팅 자산 배정 현황</h3>
+                        <input type="text" id="empSearch" placeholder="연구원명 또는 소속 부서 검색..." class="px-3 py-1.5 border border-slate-200 rounded-lg text-xs w-64 focus:outline-none focus:ring-1 focus:ring-slate-400" oninput="renderEmpTable()">
+                    </div>
+                    <div class="overflow-x-auto border border-slate-200 rounded-lg">
+                        <table class="w-full text-left text-xs border-collapse">
+                            <thead>
+                                <tr class="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
+                                    <th class="p-3">신청자 개인번호</th>
+                                    <th class="p-3">신청 연구원명</th>
+                                    <th class="p-3">소속 연구실(부서)</th>
+                                    <th class="p-3 text-right">배정 자산 수량 (개)</th>
+                                    <th class="p-3 text-right">총 소요 예산 (원)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="empTableBody" class="divide-y divide-slate-100 text-slate-600">
+                                <tr><td colspan="5" class="p-4 text-center text-slate-400">데이터가 없습니다.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="tab-raw" class="tab-content hidden space-y-4">
+                    <div class="flex justify-between items-center">
+                        <h3 class="text-xs font-bold text-slate-800">검증 필터를 통과한 집계 대상 리스트</h3>
+                        <input type="text" id="rawSearch" placeholder="물품명, 신청번호 키워드 검색..." class="px-3 py-1.5 border border-slate-200 rounded-lg text-xs w-64 focus:outline-none focus:ring-1 focus:ring-slate-400" oninput="renderRawTable()">
+                    </div>
+                    <div class="overflow-x-auto max-h-[450px] overflow-y-auto border border-slate-200 rounded-lg">
+                        <table class="w-full text-left text-[11px] border-collapse sticky-header">
+                            <thead>
+                                <tr class="bg-slate-700 text-white font-bold">
+                                    <th class="p-3">구분</th>
+                                    <th class="p-3">신청번호</th>
+                                    <th class="p-3">연도</th>
+                                    <th class="p-3">연구원(부서)</th>
+                                    <th class="p-3">자산 품목명</th>
+                                    <th class="p-3 text-right">수량</th>
+                                    <th class="p-3 text-right">추정 금액(원)</th>
+                                    <th class="p-3">매칭 시리즈</th>
+                                    <th class="p-3">도입 형태</th>
+                                </tr>
+                            </thead>
+                            <tbody id="rawTableBody" class="divide-y divide-slate-100 text-slate-600">
+                                <tr><td colspan="9" class="p-4 text-center text-slate-400">데이터가 없습니다.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="tab-ex" class="tab-content hidden space-y-6">
+                    <div>
+                        <h3 class="text-xs font-bold text-slate-800 mb-2">용역 및 임차 부속품 규칙에 따른 집계 제외 로그</h3>
+                        <div class="overflow-x-auto max-h-48 border border-slate-200 rounded-lg">
+                            <table class="w-full text-left text-[11px] border-collapse">
+                                <thead class="bg-slate-100 text-slate-600 sticky top-0 font-bold">
+                                    <tr>
+                                        <th class="p-3">신청번호</th>
+                                        <th class="p-3">품목명</th>
+                                        <th class="p-3 text-right">금액(원)</th>
+                                        <th class="p-3">제외 근거</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="exTableBody" class="divide-y divide-slate-100 text-slate-500">
+                                    <tr><td colspan="4" class="p-3 text-center text-slate-400">제외 내역이 없습니다.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="text-xs font-bold text-slate-800 mb-2">서버 하우징 내 GPU 장착 수량 패턴 미비에 따른 수동 검토 로그</h3>
+                        <div class="overflow-x-auto max-h-48 border border-slate-200 rounded-lg">
+                            <table class="w-full text-left text-[11px] border-collapse">
+                                <thead class="bg-slate-100 text-slate-600 sticky top-0 font-bold">
+                                    <tr>
+                                        <th class="p-3">신청번호</th>
+                                        <th class="p-3">품목명</th>
+                                        <th class="p-3 text-right">금액(원)</th>
+                                        <th class="p-3">검토 사유</th>
+                                        <th class="p-3">적요 / STD_CLOB 미리보기</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="reviewTableBody" class="divide-y divide-slate-100 text-slate-500">
+                                    <tr><td colspan="5" class="p-3 text-center text-slate-400">검토 내역이 없습니다.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+
+
+    <!-- 시리즈 상세 모달 -->
+    <div id="seriesModal" class="modal-overlay" onclick="if(event.target===this)closeSeriesModal()">
+        <div class="modal-content">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+                <div>
+                    <h3 id="modalTitle" class="text-sm font-bold text-slate-900"></h3>
+                    <p id="modalSubtitle" class="text-xs text-slate-400 mt-0.5"></p>
+                </div>
+                <button onclick="closeSeriesModal()" class="text-slate-400 hover:text-slate-600 text-xl font-bold w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 transition">&times;</button>
+            </div>
+            <div class="overflow-auto flex-1 p-4">
+                <table class="w-full text-left text-xs border-collapse">
+                    <thead class="sticky-header">
+                        <tr class="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
+                            <th class="p-2.5">신청번호</th>
+                            <th class="p-2.5">연도</th>
+                            <th class="p-2.5">물품명</th>
+                            <th class="p-2.5">세부모델</th>
+                            <th class="p-2.5">제조사</th>
+                            <th class="p-2.5">유형</th>
+                            <th class="p-2.5 text-right">GPU수</th>
+                            <th class="p-2.5 text-right">추정금액</th>
+                            <th class="p-2.5">분류 근거</th>
+                        </tr>
+                    </thead>
+                    <tbody id="modalTableBody" class="divide-y divide-slate-100 text-slate-600"></tbody>
+                </table>
+            </div>
+            <div id="modalFooter" class="px-6 py-3 border-t border-slate-100 text-xs text-slate-400 flex justify-between"></div>
+        </div>
+    </div>
+
+    <script src="npu.js"></script>
+</body>
+</html>
